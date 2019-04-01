@@ -1,0 +1,4 @@
+<?xml version="1.0"?>
+<launch>
+  <node name="calibrate" pkg="edo_control" type="calibrate.py" respawn="false" output="screen" />
+</launch>

@@ -1,0 +1,7 @@
+<?xml version="1.0"?>
+<launch>
+  <!-- Start a joint state publish for real robot -->
+  <node pkg="edo_control" name="joint_state_publisher" type="joint_state_publisher.py" respawn="true" output="screen"/>
+  <!-- Start a joint trajectory action server to control real robot's joints in position -->
+  <node pkg="edo_control" name="joint_trajectory_action_server" type="joint_trajectory_action_server.py" respawn="true" output="screen"/>
+</launch>
