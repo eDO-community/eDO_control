@@ -17,6 +17,7 @@ class EdoStates(object):
     JOG_SPEED_MIN = 0.11
     JOG_SPEED_MAX = 0.99
 
+    # Robot states in /machine_state
     CS_DISCONNECTED = -2
     CS_UNKNOWN = -1
     CS_INIT = 0             # Initial state
@@ -25,9 +26,20 @@ class EdoStates(object):
     CS_MOVE = 3             # machine in execution of a move
     CS_JOG = 4              # machine running a jog
     CS_MACHINE_ERROR = 5    # machine in error status and waiting for a restart
-    CS_BREAKED = 6          # brake active, no motor power supply
+    CS_BRAKED = 6           # brake active, no motor power supply
     CS_INIT_DISCOVER = 254  # UI internal state if we are initializing joints
     CS_COMMAND = 255        # state machine busy keep previous state, temporary status when there is a command running
+
+    # opcodes (bitwise) in /machine_state
+    OP_NACK = 1                 # At least 1 joint didn't send an ACK
+    OP_JOINT_ABSENT = 2         # A joint is not publishing its status. Hard stop
+    OP_JOINT_OVERCURRENT = 4    # Joint in over current. Hard stop
+    OP_JOINT_UNCALIBRATED = 8   # Joints not calibrated. Only jogs are accepted
+    OP_POSITION_ERROR = 16      # Position error. Hard stop
+    OP_ROSSERIAL_ERROR = 32     # Rosserial error. No state from joints. Hard stop
+    OP_BRAKE_ACTIVE = 64        # Brake active. No power supply provided to motors
+    OP_EMERGENCY_STOP = 128     # E-stop active [as documented in code; surprisingly actual E-STOP is not 128 but OP_BRAKE_ACTIVE]
+    OP_FENCE = 256              # Fence active
 
     def __init__(self, current_state, opcode):
         self.edo_current_state = current_state
@@ -86,12 +98,13 @@ class EdoStates(object):
             rospy.loginfo("Current machine state: %s (%d), opcode %d" % (self.get_current_code_string(),
                                                                          self.edo_current_state,
                                                                          self.edo_opcode))
+            if self.edo_opcode != 0:
+                rospy.logwarn(str(self.get_current_opcode_messages()))
             self._edo_current_state_previous = self.edo_current_state
             self._edo_opcode_previous = self.edo_opcode
 
-            # hack: input is blocking main while lopp ...
-            if self.edo_current_state == self.CS_BREAKED and self.edo_opcode == 64:
-                rospy.logwarn("Disengage brake")
+            if self.edo_current_state == self.CS_BRAKED and self.edo_opcode == self.OP_BRAKE_ACTIVE:
+                rospy.logerr("Disengage E-STOP")
 
             if self.edo_current_state == self.CS_MACHINE_ERROR:
                 rospy.logerr("Robot is in error state, please reboot the robot!")
@@ -127,12 +140,34 @@ class EdoStates(object):
             return "JOG"
         elif self.edo_current_state == self.CS_MACHINE_ERROR:
             return "MACHINE_ERROR"
-        elif self.edo_current_state == self.CS_BREAKED:
-            return "BREAKED"
+        elif self.edo_current_state == self.CS_BRAKED:
+            return "BRAKED"
         elif self.edo_current_state == self.CS_INIT_DISCOVER:
             return "INIT_DISCOVER"
         elif self.edo_current_state == self.CS_COMMAND:
             return "ROBOT IS BUSY"
+
+    def get_current_opcode_messages(self):
+        messages = []
+        if self.edo_opcode & 1:
+            messages.append("NACK: At least 1 joint didn't send an ACK")
+        if self.edo_opcode & 2:
+            messages.append("JOINT_ABSENT: A joint is not publishing its status. Hard stop")
+        if self.edo_opcode & 4:
+            messages.append("JOINT_OVERCURRENT: Joint in over current. Hard stop")
+        if self.edo_opcode & 8:
+            messages.append("JOINT_UNCALIBRATED: Joints not calibrated. Only jogs are accepted")
+        if self.edo_opcode & 16:
+            messages.append("POSITION_ERROR: Position error. Hard stop")
+        if self.edo_opcode & 32:
+            messages.append("ROSSERIAL_ERROR: Rosserial error. No state from joints. Hard stop")
+        if self.edo_opcode & 64:
+            messages.append("BRAKE_ACTIVE: Brake active. No power supply provided to motors")
+        if self.edo_opcode & 128:
+            messages.append("EMERGENCY_STOP: E-stop active")
+        if self.edo_opcode & 256:
+            messages.append("FENCE: Fence active")
+        return messages
 
     def send_movement_command_init(self, msg):
         self._sent_next_movement_command_bool = False
@@ -182,7 +217,7 @@ class EdoStates(object):
         return self.msg_mc
 
     def calibration(self):
-        while not (self.edo_current_state == self.CS_NOT_CALIBRATED and self.edo_opcode == 8 and not self.send_third_step_bool):
+        while not (self.edo_current_state == self.CS_NOT_CALIBRATED and self.edo_opcode == self.OP_JOINT_UNCALIBRATED and not self.send_third_step_bool):
             self.update()
             rospy.sleep(1)
 
@@ -300,24 +335,23 @@ class EdoStates(object):
             self.send_first_step_bool = True
             self.select_6_axis_with_gripper_edo()
 
-        if self.edo_current_state == self.CS_BREAKED and self.edo_opcode == 72 and not self.send_second_step_bool:
+        if self.edo_current_state == self.CS_BRAKED and self.edo_opcode == (self.OP_JOINT_UNCALIBRATED | self.OP_JOINT_UNCALIBRATED) \
+                and not self.send_second_step_bool:
             # disengage brakes to uncalibrated robot
             self.send_second_step_bool = True
             self.disengage_brakes()
 
         if self.edo_current_state == self.CS_INIT and \
-                (self.edo_opcode == 64 or self.edo_opcode == 72) and not self.reselect_joints_bool:
+                (self.edo_opcode == self.OP_BRAKE_ACTIVE or self.edo_opcode == (self.OP_BRAKE_ACTIVE | self.OP_JOINT_UNCALIBRATED)) \
+                and not self.reselect_joints_bool:
             # according to tablet, select 7 joints again and start from scratch...
             self.reselect_joints_bool = True
             self.select_6_axis_with_gripper_edo()
 
-        if self.edo_current_state == self.CS_NOT_CALIBRATED and self.edo_opcode == 8 and not self.send_third_step_bool:
-            rospy.loginfo("Starting calibration jog loop")
-            self.calibration()
-            self.send_third_step_bool = True
-            self.read_input_bool = True
+        if self.edo_current_state == self.CS_NOT_CALIBRATED and self.edo_opcode == self.OP_JOINT_UNCALIBRATED and not self.send_third_step_bool:
+            rospy.logerr("Your robot is not calibrated, please calibrate it with calibrate.launch first")
 
-        if self.edo_current_state == self.CS_BREAKED and self.edo_opcode == 64:
+        if self.edo_current_state == self.CS_BRAKED and self.edo_opcode == self.OP_BRAKE_ACTIVE:
             # disengage brakes to calibrated robot on every two seconds until emergency button is released
             self.read_input_bool = False
             if not self.disengage_brakes_bool:
