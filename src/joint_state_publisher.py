@@ -7,6 +7,7 @@ import rospy
 from sensor_msgs.msg import JointState
 from edo_core_msgs.msg import JointStateArray
 from edo.states import ordered_joint_names
+from rospy import ROSException
 
 # TODO: Gripper has been removed (with selector [:-1]) because unknown to the URDF
 
@@ -19,7 +20,10 @@ def js_callback(jsa):
         js.position = [joint.position * 0.01745 for joint in jsa.joints][:-1]  # Convert Deg to Rad and delete last joint
         js.velocity = [joint.velocity * 0.01745 for joint in jsa.joints][:-1]  # Convert Deg to Rad and delete last joint
         js.effort = [joint.current for joint in jsa.joints][:-1] # TODO Approximate conversion motor_current => effort?
-        js_publisher.publish(js)
+        try:
+            js_publisher.publish(js)
+        except ROSException:
+            pass
     elif jsa.joints_mask < 9999999999999:  # Huge number pops when robot isn't ready
         raise NotImplementedError("Joint State publisher for real robot does not know edo joints mask {}".format(jsa.joints_mask))
 

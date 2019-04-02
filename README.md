@@ -23,3 +23,9 @@ export ROS_IP=10.42.0.1  # Set your workstation's IP instead!
 rostopic echo /joint_states      # Echoes joint states at about 90 Hz
 ```
 You can send trajectories in position control to action server `/follow_joint_trajectory` (e.g. with `eDO_moveit` package)
+
+Optionally, this itneractive script offers more features for calibration, manual jogs, motions in cartesian space or returning to home position:
+
+```
+rosrun edo_control setup_edo.py
+```
