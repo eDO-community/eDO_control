@@ -20,7 +20,7 @@ def js_callback(jsa):
         js.velocity = [joint.velocity * 0.01745 for joint in jsa.joints][:-1]  # Convert Deg to Rad and delete last joint
         js.effort = [joint.current for joint in jsa.joints][:-1] # TODO Approximate conversion motor_current => effort?
         js_publisher.publish(js)
-    else:
+    elif jsa.joints_mask < 9999999999999:  # Huge number pops when robot isn't ready
         raise NotImplementedError("Joint State publisher for real robot does not know edo joints mask {}".format(jsa.joints_mask))
 
 rospy.init_node('joint_state_publisher')
