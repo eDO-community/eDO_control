@@ -230,7 +230,7 @@ class JointTrajectoryActionServer(object):
 
     def _command_stop(self, joint_names):
         values = [0.0] * len(joint_names)
-        while (not self._server.is_new_goal_available() and self._alive and self.robot_is_enabled()):
+        if (not self._server.is_new_goal_available() and self._alive and self.robot_is_enabled()):
             self.states._jog_command_pub.publish(self.states.create_jog_joints_command_message(values))
             rospy.sleep(1.0 / self._control_rate)
 
@@ -416,9 +416,9 @@ class JointTrajectoryActionServer(object):
             else:
                 return True
 
-        while (now_from_start < (last_time + self._goal_time)
-               and not rospy.is_shutdown() and self.robot_is_enabled()):
+        while (now_from_start < (last_time + self._goal_time) and not rospy.is_shutdown() and self.robot_is_enabled()):
             if not self._command_joints(joint_names, last, start_time, dimensions_dict):
+                self._server.set_aborted(self._result)
                 return
             now_from_start = rospy.get_time() - start_time
             self._update_feedback(deepcopy(last), joint_names,
