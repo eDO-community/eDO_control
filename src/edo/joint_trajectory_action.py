@@ -111,6 +111,7 @@ class JointTrajectoryActionServer(object):
 
         # Controller parameters from arguments, messages, and dynamic reconfigure
         self._control_rate = rate  # Hz
+        self._update_rate_spinner = rospy.Rate(self._control_rate)
         self._control_joints = []
         self._pid_gains = {'kp': dict(), 'ki': dict(), 'kd': dict()}
         self._goal_time = 0.0
@@ -134,6 +135,11 @@ class JointTrajectoryActionServer(object):
         else:
             rospy.logerr("Joint Trajectory Action Server cannot be started when robot is in state %s" % self.states.get_current_code_string())
             rospy.logerr("Make sure your robot is started and calibrated properly with calibrate.launch")
+
+    def spin(self):
+        while not rospy.is_shutdown():
+            self.states.update()
+            self._update_rate_spinner.sleep()
 
     def robot_is_enabled(self):
         return True # TODO read e-stop

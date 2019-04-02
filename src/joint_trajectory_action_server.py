@@ -60,7 +60,7 @@ def start_server(rate, mode):
 
     rospy.on_shutdown(cleanup)
     print("Running JTAS. Ctrl-c to quit")
-    rospy.spin()
+    j.spin()
 
 
 def main():
