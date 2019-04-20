@@ -4,6 +4,8 @@ import rospy
 from edo_core_msgs.msg import MachineState
 from edo_core_msgs.msg import JointInit
 from edo_core_msgs.msg import JointReset
+from edo_core_msgs.msg import JointControlArray
+from edo_core_msgs.msg import JointControl
 from edo_core_msgs.msg import MovementCommand
 from edo_core_msgs.msg import JointCalibration
 from edo_core_msgs.msg import MovementFeedback
@@ -55,7 +57,6 @@ class EdoStates(object):
 
         self._joint_init_command_pub = None
         self._joint_reset_command_pub = None
-        self._jog_command_pub = None
         self._joint_calibration_command_pub = None
         self._movement_command_pub = None
 
@@ -65,12 +66,17 @@ class EdoStates(object):
         self.disengage_brakes_bool = False
         self.read_input_bool = False
 
+        self.msg_jca = JointControlArray()
         self.msg_mc = MovementCommand()
         self.msg_mc.move_command = 74
         self.msg_mc.move_type = 74
         self.msg_mc.ovr = 100
         self.msg_mc.target.data_type = 74
         self.msg_mc.target.joints_mask = 127
+
+        # Joint Command topics
+        self.jog_command_pub = None
+        self.joint_control_pub = None
 
         rospy.Subscriber("/machine_state", MachineState, self.callback)
 
@@ -81,7 +87,10 @@ class EdoStates(object):
         self._joint_reset_command_pub = joint_reset_command_pub
 
         jog_command_pub = rospy.Publisher('/bridge_jog', MovementCommand, queue_size=10, latch=True)
-        self._jog_command_pub = jog_command_pub
+        self.jog_command_pub = jog_command_pub
+
+        joint_control_pub = rospy.Publisher('/algo_jnt_ctrl', JointControlArray, queue_size=1)
+        self.joint_control_pub = joint_control_pub
 
         joint_calibration_command_pub = rospy.Publisher('/bridge_jnt_calib', JointCalibration, queue_size=10, latch=True)
         self._joint_calibration_command_pub = joint_calibration_command_pub
@@ -216,11 +225,18 @@ class EdoStates(object):
         self.msg_mc.target.joints_data[self._current_joint] = sign * self._edo_jog_speed
         return self.msg_mc
 
+    def create_joint_command_message(self, joint_names, point):
+        self.msg_jca.size = len(joint_names)
+        # Convert back command from radians to degrees
+        # TODO: How can we exploit acceleration to provide ff_velocity and maybe current instead of 0, 0, 0?
+        self.msg_jca.joints = [JointControl(point.positions[i]/0.01745, point.velocities[i]/0.01745, 0, 0, 0) for i in range(self.msg_jca.size)]
+        return self.msg_jca
+
     def calibration(self):
         if self.edo_current_state == self.CS_CALIBRATED and self.edo_opcode == 0:
             rospy.logwarn("Robot was already calibrated, going for a new calibration...")
         else:
-            while not (self.edo_current_state == self.CS_NOT_CALIBRATED and self.edo_opcode == self.OP_JOINT_UNCALIBRATED and not self.send_third_step_bool) and not rospy.is_shutdown():
+            while not (self.edo_current_state == self.CS_NOT_CALIBRATED and self.edo_opcode == self.OP_JOINT_UNCALIBRATED) and not rospy.is_shutdown():
                 rospy.loginfo("Waiting machine state OP_JOINT_UNCALIBRATED (currently {}) and opcode OP_CS_NOT_CALIBRATED (currently {})...".format(
                     self.get_current_code_string(), self.get_current_opcode_messages()))
                 self.update()
@@ -250,9 +266,9 @@ class EdoStates(object):
                     self._edo_jog_speed -= 0.1
                     rospy.loginfo("Jog speed: %.1f", self._edo_jog_speed)
             elif key == keys.RIGHT:
-                self._jog_command_pub.publish(self.create_jog_joint_command_message(1))
+                self.jog_command_pub.publish(self.create_jog_joint_command_message(1))
             elif key == keys.LEFT:
-                self._jog_command_pub.publish(self.create_jog_joint_command_message(-1))
+                self.jog_command_pub.publish(self.create_jog_joint_command_message(-1))
             elif key == keys.PLUS:
                 self._current_joint = (self._current_joint + 1) % self.NUMBER_OF_JOINTS
                 rospy.loginfo("Calibrating joint %d", self._current_joint + 1)
@@ -302,9 +318,9 @@ class EdoStates(object):
                     self._edo_jog_speed -= 0.1
                     rospy.loginfo("Jog speed: %.1f", self._edo_jog_speed)
             elif key == keys.RIGHT:
-                self._jog_command_pub.publish(self.create_jog_joint_command_message(1))
+                self.jog_command_pub.publish(self.create_jog_joint_command_message(1))
             elif key == keys.LEFT:
-                self._jog_command_pub.publish(self.create_jog_joint_command_message(-1))
+                self.jog_command_pub.publish(self.create_jog_joint_command_message(-1))
             elif key == keys.PLUS:
                 self._current_joint = (self._current_joint + 1) % self.NUMBER_OF_JOINTS
                 rospy.loginfo("Jogging joint %d", self._current_joint + 1)
@@ -316,25 +332,6 @@ class EdoStates(object):
                 break
             else:
                 rospy.loginfo("Wrong button was pressed")
-
-    def move_home(self):
-        rospy.loginfo("Sending home position")
-
-        # send reset command
-        msg_mc = MovementCommand()
-        msg_mc.move_command = 67
-        self.send_movement_command_init(msg_mc)
-
-        msg_mc = MovementCommand()
-        msg_mc.move_command = 77
-        msg_mc.move_type = 74
-        msg_mc.ovr = 50
-        msg_mc.target.data_type = 74
-        msg_mc.target.joints_mask = (1 << self.NUMBER_OF_JOINTS) - 1
-        msg_mc.target.joints_data = [0.0] * 7
-
-        self.send_movement_command(msg_mc)
-        rospy.loginfo("Home position should be soon reached")
 
     def update(self):
         if self.edo_current_state == self.CS_INIT and self.edo_opcode == 0 and not self.send_first_step_bool:
@@ -355,7 +352,7 @@ class EdoStates(object):
             self.reselect_joints_bool = True
             self.select_6_axis_with_gripper_edo()
 
-        if self.edo_current_state == self.CS_NOT_CALIBRATED and self.edo_opcode == self.OP_JOINT_UNCALIBRATED and not self.send_third_step_bool:
+        if self.edo_current_state == self.CS_NOT_CALIBRATED and self.edo_opcode == self.OP_JOINT_UNCALIBRATED:
             rospy.logerr("Your robot is not calibrated, please calibrate it with calibrate.launch first")
 
         if self.edo_current_state == self.CS_BRAKED and self.edo_opcode == self.OP_BRAKE_ACTIVE:

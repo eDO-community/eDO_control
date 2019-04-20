@@ -9,13 +9,15 @@ find_package(catkin REQUIRED
   std_msgs
   control_msgs
   trajectory_msgs
-  dynamic_reconfigure)
+  dynamic_reconfigure
+  edo_core_msgs
+)
 
 catkin_python_setup()
 
 generate_dynamic_reconfigure_options(
-  cfg/PositionJointTrajectoryActionServer.cfg
-  cfg/VelocityJointTrajectoryActionServer.cfg)
+  cfg/JointTrajectoryActionServer.cfg
+)
 
 catkin_package(
   CATKIN_DEPENDS
@@ -25,7 +27,10 @@ catkin_package(
   std_msgs
   control_msgs
   trajectory_msgs
-  dynamic_reconfigure)
+  edo_core_msgs
+  message_runtime
+  dynamic_reconfigure
+)
 
 install(DIRECTORY launch DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION})
 install(DIRECTORY config DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION})

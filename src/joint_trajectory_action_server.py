@@ -36,30 +36,22 @@ Adapted from the Baxter RSDK Joint Trajectory Controller
 import argparse
 import rospy
 from dynamic_reconfigure.server import Server
-from edo_control.cfg import PositionJointTrajectoryActionServerConfig
-from edo_control.cfg import VelocityJointTrajectoryActionServerConfig
+from edo_control.cfg import JointTrajectoryActionServerConfig
 from edo.joint_trajectory_action import JointTrajectoryActionServer
 
 
-def start_server(rate, mode):
-    print("Initializing node... ")
-    rospy.init_node("%s_joint_trajectory_action_server" % mode)
-    print("Initializing joint trajectory action server...")
+def start_server(rate):
+    rospy.init_node("joint_trajectory_action_server" )
+    rospy.loginfo("Initializing joint trajectory action server...")
 
-    if mode == 'velocity':
-        dyn_cfg_srv = Server(VelocityJointTrajectoryActionServerConfig,
-                             lambda config, level: config)
-    elif mode == 'position':
-        dyn_cfg_srv = Server(PositionJointTrajectoryActionServerConfig,
-                             lambda config, level: config)
-
-    j = JointTrajectoryActionServer(dyn_cfg_srv, rate, mode)
+    dyn_cfg_srv = Server(JointTrajectoryActionServerConfig, lambda config, level: config)
+    j = JointTrajectoryActionServer(dyn_cfg_srv, rate)
 
     def cleanup():
         j.clean_shutdown()
 
     rospy.on_shutdown(cleanup)
-    print("Running JTAS. Ctrl-c to quit")
+    rospy.loginfo("Running JTAS. Ctrl-c to quit")
     j.spin()
 
 
@@ -70,13 +62,8 @@ def main():
         "-r", "--rate", dest="rate", default=100.0,
         type=float, help="trajectory control rate (Hz)"
     )
-    parser.add_argument(
-        "-m", "--mode", default='position',
-        choices=['position', 'velocity'],
-        help="control mode for trajectory execution"
-    )
     args = parser.parse_args(rospy.myargv()[1:])
-    start_server(args.rate, args.mode)
+    start_server(args.rate)
 
 
 if __name__ == "__main__":
