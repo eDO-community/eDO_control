@@ -217,9 +217,16 @@ class EdoStates(object):
         return self.msg_mc
 
     def calibration(self):
-        while not (self.edo_current_state == self.CS_NOT_CALIBRATED and self.edo_opcode == self.OP_JOINT_UNCALIBRATED and not self.send_third_step_bool):
-            self.update()
-            rospy.sleep(1)
+        if self.edo_current_state == self.CS_CALIBRATED and self.edo_opcode == 0:
+            rospy.logwarn("Robot was already calibrated, going for a new calibration...")
+        else:
+            while not (self.edo_current_state == self.CS_NOT_CALIBRATED and self.edo_opcode == self.OP_JOINT_UNCALIBRATED and not self.send_third_step_bool) and not rospy.is_shutdown():
+                rospy.loginfo("Waiting machine state OP_JOINT_UNCALIBRATED (currently {}) and opcode OP_CS_NOT_CALIBRATED (currently {})...".format(
+                    self.get_current_code_string(), self.get_current_opcode_messages()))
+                self.update()
+                rospy.sleep(1)
+        
+        if rospy.is_shutdown(): return False
 
         # calibrating just first 6 joints!!!
         self._current_joint = 0  # always start calibration procedure with first joint
@@ -266,7 +273,7 @@ class EdoStates(object):
                 if self._current_joint >= self.NUMBER_OF_JOINTS-1:
                     self._current_joint = 0
                     rospy.loginfo("Calibration completed, exiting jog loop")
-                    break
+                    return True
                 else:
                     rospy.loginfo("Calibrating joint %d", self._current_joint + 1)
             elif key == keys.ESC:
@@ -335,7 +342,7 @@ class EdoStates(object):
             self.send_first_step_bool = True
             self.select_6_axis_with_gripper_edo()
 
-        if self.edo_current_state == self.CS_BRAKED and self.edo_opcode == (self.OP_JOINT_UNCALIBRATED | self.OP_JOINT_UNCALIBRATED) \
+        if self.edo_current_state == self.CS_BRAKED and self.edo_opcode == (self.OP_JOINT_UNCALIBRATED | self.OP_BRAKE_ACTIVE) \
                 and not self.send_second_step_bool:
             # disengage brakes to uncalibrated robot
             self.send_second_step_bool = True
