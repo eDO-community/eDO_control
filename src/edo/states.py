@@ -112,9 +112,6 @@ class EdoStates(object):
             self._edo_current_state_previous = self.edo_current_state
             self._edo_opcode_previous = self.edo_opcode
 
-            if self.edo_current_state == self.CS_BRAKED and self.edo_opcode == self.OP_BRAKE_ACTIVE:
-                rospy.logerr("Disengage E-STOP")
-
             if self.edo_current_state == self.CS_MACHINE_ERROR:
                 rospy.logerr("Robot is in error state, please reboot the robot!")
 
@@ -124,7 +121,6 @@ class EdoStates(object):
         elif msg.type == 1:
             pass
         elif msg.type == 2:
-            rospy.loginfo("Feedback: Command executed")
             self._sent_next_movement_command_bool = True
         elif msg.type == -1:
             rospy.logerr("Feedback Error, msg.data: %d, " % msg.data)

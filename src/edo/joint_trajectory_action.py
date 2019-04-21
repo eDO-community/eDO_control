@@ -110,7 +110,7 @@ class JointTrajectoryActionServer(object):
 
         # Start the action server
         rospy.sleep(0.5)
-        if self.states.edo_current_state == self.states.CS_CALIBRATED:
+        if self.states.edo_current_state in [self.states.CS_CALIBRATED, self.states.CS_BRAKED]:
             self._server.start()
             self._alive = True
         else:
@@ -314,6 +314,5 @@ class JointTrajectoryActionServer(object):
             rospy.logerr("%s: Exceeded Goal Threshold Error %s" % (self._action_name, result,))
             self._result.error_code = self._result.GOAL_TOLERANCE_VIOLATED
             self._server.set_aborted(self._result)
-        self._command_stop(goal.trajectory.joint_names)
 
 
