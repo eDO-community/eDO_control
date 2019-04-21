@@ -226,10 +226,10 @@ class EdoStates(object):
         return self.msg_mc
 
     def create_joint_command_message(self, joint_names, point):
-        self.msg_jca.size = len(joint_names)
+        self.msg_jca.size = len(joint_names) + 1
         # Convert back command from radians to degrees
         # TODO: How can we exploit acceleration to provide ff_velocity and maybe current instead of 0, 0, 0?
-        self.msg_jca.joints = [JointControl(point.positions[i]/0.01745, point.velocities[i]/0.01745, 0, 0, 0) for i in range(self.msg_jca.size)]
+        self.msg_jca.joints = [JointControl(point.positions[i]/0.01745, point.velocities[i]/0.01745, 0, 0, 0) for i in range(6)] + [JointControl(0, 0, 0, 0, 0)]
         return self.msg_jca
 
     def calibration(self):
