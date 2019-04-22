@@ -202,17 +202,11 @@ class JointTrajectoryActionServer(object):
         self._fdbk.error.time_from_start = rospy.Duration.from_sec(cur_time)
         self._server.publish_feedback(self._fdbk)
 
-    def _command_stop(self, joint_names):
-        values = [0.0] * len(joint_names)
-        if (not self._server.is_new_goal_available() and self._alive and self.robot_is_enabled()):
-            self.states.jog_command_pub.publish(self.states.create_jog_joints_command_message(values))
-            rospy.sleep(1.0 / self._control_rate)
-
     def _command_joints(self, joint_names, point):
         if self._server.is_preempt_requested() or not self.robot_is_enabled():
             rospy.loginfo("%s: Trajectory Preempted" % (self._action_name,))
             self._server.set_preempted()
-            self._command_stop(joint_names)
+            return False
         self.states.joint_control_pub.publish(self.states.create_joint_command_message(joint_names, point))
         return True
 
