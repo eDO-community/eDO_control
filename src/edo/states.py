@@ -9,6 +9,7 @@ from edo_core_msgs.msg import JointControl
 from edo_core_msgs.msg import MovementCommand
 from edo_core_msgs.msg import JointCalibration
 from edo_core_msgs.msg import MovementFeedback
+from edo_core_msgs.srv import ControlSwitch, ControlSwitchRequest
 from edo.messages import errors
 
 from getkey import getkey, keys
@@ -80,7 +81,24 @@ class EdoStates(object):
 
         self._joint_calibration_command_pub = rospy.Publisher('/bridge_jnt_calib', JointCalibration, queue_size=10, latch=True)
 
-        rospy.Subscriber('/machine_movement_ack', MovementFeedback, self.move_ack_callback)        
+        rospy.Subscriber('/machine_movement_ack', MovementFeedback, self.move_ack_callback)  
+        self.switch_algo_service(False)      
+
+    def switch_algo_service(self, new_state):
+        rospy.loginfo("Waiting for the service that disables the robot's itnernal algorithm manager...")
+        rospy.wait_for_service('/algo_control_switch_srv')
+        try:
+            algo_control_switch_srv = rospy.ServiceProxy('/algo_control_switch_srv', ControlSwitch)
+            answer = algo_control_switch_srv(ControlSwitchRequest(mode=1))
+        except rospy.ServiceException, e:
+            rospy.logerr("Cannot disable internal robot's algorithm manager")
+        else:
+            done = answer.result == 0
+            if done:
+                rospy.logwarn("Robot's algorithm manager has been disabled, tablet app will no longer work")
+            else:
+                rospy.logwarn("Cannot disable internal robot's algorithm manager, perhaps it is already off")
+
 
     def callback(self, msg):
         self.edo_current_state = msg.current_state

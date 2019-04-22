@@ -110,7 +110,7 @@ class JointTrajectoryActionServer(object):
 
         # Start the action server
         rospy.sleep(0.5)
-        if self.states.edo_current_state in [self.states.CS_CALIBRATED, self.states.CS_BRAKED, self.states.CS_MOVE]:
+        if self.states.edo_current_state in [self.states.CS_CALIBRATED, self.states.CS_BRAKED]:
             self._server.start()
             self._alive = True
         else:
@@ -212,7 +212,7 @@ class JointTrajectoryActionServer(object):
             rospy.loginfo("%s: Trajectory Preempted" % (self._action_name,))
             self._server.set_preempted()
             self._command_stop(joint_names)
-        self.states.movement_command_pub.publish(self.states.create_move_commande_messages(joint_names, point))
+        self.states.joint_control_pub.publish(self.states.create_joint_command_message(joint_names, point))
         return True
 
     def _on_trajectory_action(self, goal):
@@ -263,7 +263,6 @@ class JointTrajectoryActionServer(object):
         while point_id < len(trajectory_points):
             end_time = trajectory_points[point_id].time_from_start.to_sec()
             point = trajectory_points[point_id]
-            print(point.positions)
             while (now_from_start < end_time and not rospy.is_shutdown() and self.robot_is_enabled()):
                 #Acquire Mutex
                 now = rospy.get_time()
