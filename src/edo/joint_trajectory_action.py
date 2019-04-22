@@ -110,7 +110,7 @@ class JointTrajectoryActionServer(object):
 
         # Start the action server
         rospy.sleep(0.5)
-        if self.states.edo_current_state in [self.states.CS_CALIBRATED, self.states.CS_BRAKED]:
+        if self.states.edo_current_state in [self.states.CS_CALIBRATED, self.states.CS_BRAKED, self.states.CS_MOVE]:
             self._server.start()
             self._alive = True
         else:
@@ -120,6 +120,7 @@ class JointTrajectoryActionServer(object):
     def spin(self):
         while not rospy.is_shutdown():
             self.states.update()
+            #self.states.joint_control_pub.publish(self.states.msg_jca)
             self._update_rate_spinner.sleep()
 
     def robot_is_enabled(self):
@@ -211,12 +212,13 @@ class JointTrajectoryActionServer(object):
             rospy.loginfo("%s: Trajectory Preempted" % (self._action_name,))
             self._server.set_preempted()
             self._command_stop(joint_names)
-        self.states.joint_control_pub.publish(self.states.create_joint_command_message(joint_names, point))
+        self.states.movement_command_pub.publish(self.states.create_move_commande_messages(joint_names, point))
         return True
 
     def _on_trajectory_action(self, goal):
         joint_names = goal.trajectory.joint_names
         trajectory_points = goal.trajectory.points
+
         # Load parameters for trajectory
         self._get_trajectory_parameters(joint_names, goal)
         # Create a new discretized joint trajectory
@@ -225,7 +227,7 @@ class JointTrajectoryActionServer(object):
             rospy.logerr("%s: Empty Trajectory" % (self._action_name,))
             self._server.set_aborted()
             return
-        rospy.loginfo("%s: Executing requested joint trajectory" % (self._action_name,))
+        rospy.logwarn("{}: Executing requested joint trajectory {:0.1f} sec".format(self._action_name, trajectory_points[-1].time_from_start.to_sec()))
         control_rate = rospy.Rate(self._control_rate)
 
         if num_points == 1:
@@ -257,22 +259,25 @@ class JointTrajectoryActionServer(object):
         # of the control rate past the end to ensure we get to the end.
         # Keep track of current indices for spline segment generation
         now_from_start = rospy.get_time() - start_time
-        end_time = trajectory_points[-1].time_from_start.to_sec()
         point_id = 0
-        while (now_from_start < end_time and not rospy.is_shutdown() and self.robot_is_enabled()):
-            #Acquire Mutex
-            now = rospy.get_time()
-            now_from_start = now - start_time
+        while point_id < len(trajectory_points):
+            end_time = trajectory_points[point_id].time_from_start.to_sec()
             point = trajectory_points[point_id]
+            print(point.positions)
+            while (now_from_start < end_time and not rospy.is_shutdown() and self.robot_is_enabled()):
+                #Acquire Mutex
+                now = rospy.get_time()
+                now_from_start = now - start_time
 
-            # Command Joint Position, Velocity, Acceleration
-            command_executed = self._command_joints(joint_names, point)
-            self.states.update()
-            self._update_feedback(deepcopy(point), joint_names, now_from_start)
-            # Release the Mutex
-            if not command_executed:
-                return
-            control_rate.sleep()
+                # Command Joint Position, Velocity, Acceleration
+                command_executed = self._command_joints(joint_names, point)
+                self.states.update()
+                self._update_feedback(deepcopy(point), joint_names, now_from_start)
+                # Release the Mutex
+                if not command_executed:
+                    return
+                control_rate.sleep()
+            point_id += 1
 
         # Keep trying to meet goal until goal_time constraint expired
         last = trajectory_points[-1]

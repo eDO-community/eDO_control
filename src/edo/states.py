@@ -56,11 +56,6 @@ class EdoStates(object):
         self._current_joint = 0
         self._sent_next_movement_command_bool = False
 
-        self._joint_init_command_pub = None
-        self._joint_reset_command_pub = None
-        self._joint_calibration_command_pub = None
-        self._movement_command_pub = None
-
         self.reselect_joints_bool = False
 
         self.disengage_brakes_timer = None
@@ -76,22 +71,14 @@ class EdoStates(object):
 
         rospy.Subscriber("/machine_state", MachineState, self.callback)
 
-        joint_init_command_pub = rospy.Publisher('/bridge_init', JointInit, queue_size=10, latch=True)
-        self._joint_init_command_pub = joint_init_command_pub
+        self._joint_init_command_pub = rospy.Publisher('/bridge_init', JointInit, queue_size=10, latch=True)
+        self._joint_reset_command_pub = rospy.Publisher('/bridge_jnt_reset', JointReset, queue_size=10, latch=True)
 
-        joint_reset_command_pub = rospy.Publisher('/bridge_jnt_reset', JointReset, queue_size=10, latch=True)
-        self._joint_reset_command_pub = joint_reset_command_pub
+        self.jog_command_pub =  rospy.Publisher('/bridge_jog', MovementCommand, queue_size=10, latch=True)
+        self.joint_control_pub = rospy.Publisher('/algo_jnt_ctrl', JointControlArray, queue_size=1)
+        self.movement_command_pub = rospy.Publisher('/bridge_move', MovementCommand, queue_size=10, latch=True)
 
-        jog_command_pub = rospy.Publisher('/bridge_jog', MovementCommand, queue_size=10, latch=True)
-        self.jog_command_pub = jog_command_pub
-
-        joint_control_pub = rospy.Publisher('/algo_jnt_ctrl', JointControlArray, queue_size=1)
-        self.joint_control_pub = joint_control_pub
-
-        joint_calibration_command_pub = rospy.Publisher('/bridge_jnt_calib', JointCalibration, queue_size=10, latch=True)
-        self._joint_calibration_command_pub = joint_calibration_command_pub
-
-        self._movement_command_pub = rospy.Publisher('/bridge_move', MovementCommand, queue_size=10, latch=True)
+        self._joint_calibration_command_pub = rospy.Publisher('/bridge_jnt_calib', JointCalibration, queue_size=10, latch=True)
 
         rospy.Subscriber('/machine_movement_ack', MovementFeedback, self.move_ack_callback)        
 
@@ -171,14 +158,14 @@ class EdoStates(object):
 
     def send_movement_command_init(self, msg):
         self._sent_next_movement_command_bool = False
-        self._movement_command_pub.publish(msg)
+        self.movement_command_pub.publish(msg)
 
     def send_movement_command(self, msg):
         while not self._sent_next_movement_command_bool and not rospy.is_shutdown():
             rospy.sleep(0.01)
 
         self._sent_next_movement_command_bool = False
-        self._movement_command_pub.publish(msg)
+        self.movement_command_pub.publish(msg)
 
     def select_6_axis_with_gripper_edo(self):
         rospy.loginfo("Trying to select 6-axis robot with a gripper...")
@@ -217,12 +204,15 @@ class EdoStates(object):
         return self.msg_mc
 
     def create_move_commande_messages(self, joint_names, point):
+        joint_names = joint_names + ["gripper"]
         self.msg_mc.move_command = 77
         self.msg_mc.move_type = 74
         self.msg_mc.ovr = 50
         self.msg_mc.target.data_type = 74
         self.msg_mc.target.joints_mask = (1 << len(joint_names)) - 1
-        self.msg_mc.target.joints_data = [JointControl(point.positions[i]/0.01745, point.velocities[i]/0.01745, 0, 0, 0) for i in range(self.msg_jca.size)]
+        self.msg_mc.target.joints_data = [point.positions[i]/0.01745 for i in range(len(point.positions))] + [0.0]
+        #print (self.msg_mc)
+        #print("###################")
         return self.msg_mc
 
     def create_jog_joint_command_message(self, sign):
