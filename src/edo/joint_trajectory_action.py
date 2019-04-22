@@ -34,6 +34,7 @@ from copy import deepcopy
 import math
 import operator
 import numpy as np
+import edo.bezier as bezier
 from control_msgs.msg import FollowJointTrajectoryAction
 from control_msgs.msg import FollowJointTrajectoryFeedback
 from control_msgs.msg import FollowJointTrajectoryResult
@@ -215,9 +216,63 @@ class JointTrajectoryActionServer(object):
         self.states.joint_control_pub.publish(self.states.create_joint_command_message(joint_names, point))
         return True
 
+    def _determine_dimensions(self, trajectory_points):
+        # Determine dimensions supplied
+        position_flag = True
+        velocity_flag = (len(trajectory_points[0].velocities) != 0 and
+                         len(trajectory_points[-1].velocities) != 0)
+        acceleration_flag = (len(trajectory_points[0].accelerations) != 0 and
+                             len(trajectory_points[-1].accelerations) != 0)
+        return {'positions':position_flag,
+                'velocities':velocity_flag,
+                'accelerations':acceleration_flag}
+
+    def _compute_bezier_coeff(self, joint_names, trajectory_points, dimensions_dict):
+        # Compute Full Bezier Curve
+        num_joints = len(joint_names)
+        num_traj_pts = len(trajectory_points)
+        num_traj_dim = sum(dimensions_dict.values())
+        num_b_values = len(['b0', 'b1', 'b2', 'b3'])
+        b_matrix = np.zeros(shape=(num_joints, num_traj_dim, num_traj_pts-1, num_b_values))
+        for jnt in xrange(num_joints):
+            traj_array = np.zeros(shape=(len(trajectory_points), num_traj_dim))
+            for idx, point in enumerate(trajectory_points):
+                current_point = list()
+                current_point.append(point.positions[jnt])
+                if dimensions_dict['velocities']:
+                    current_point.append(point.velocities[jnt])
+                if dimensions_dict['accelerations']:
+                    current_point.append(point.accelerations[jnt])
+                traj_array[idx, :] = current_point
+            d_pts = bezier.de_boor_control_pts(traj_array)
+            b_matrix[jnt, :, :, :] = bezier.bezier_coefficients(traj_array, d_pts)
+        return b_matrix
+
+    def _get_bezier_point(self, b_matrix, idx, t, cmd_time, dimensions_dict):
+        pnt = JointTrajectoryPoint()
+        pnt.time_from_start = rospy.Duration(cmd_time)
+        num_joints = b_matrix.shape[0]
+        pnt.positions = [0.0] * num_joints
+        if dimensions_dict['velocities']:
+            pnt.velocities = [0.0] * num_joints
+        if dimensions_dict['accelerations']:
+            pnt.accelerations = [0.0] * num_joints
+        for jnt in range(num_joints):
+            b_point = bezier.bezier_point(b_matrix[jnt, :, :, :], idx, t)
+            # Positions at specified time
+            pnt.positions[jnt] = b_point[0]
+            # Velocities at specified time
+            if dimensions_dict['velocities']:
+                pnt.velocities[jnt] = b_point[1]
+            # Accelerations at specified time
+            if dimensions_dict['accelerations']:
+                pnt.accelerations[jnt] = b_point[-1]
+        return pnt
+
     def _on_trajectory_action(self, goal):
         joint_names = goal.trajectory.joint_names
         trajectory_points = goal.trajectory.points
+        dimensions_dict = self._determine_dimensions(trajectory_points)
 
         # Load parameters for trajectory
         self._get_trajectory_parameters(joint_names, goal)
@@ -236,6 +291,10 @@ class JointTrajectoryActionServer(object):
             first_trajectory_point.positions = self._get_current_position(joint_names)
             # To preserve desired velocities and accelerations, copy them to the first
             # trajectory point if the trajectory is only 1 point.
+            if dimensions_dict['velocities']:
+                first_trajectory_point.velocities = deepcopy(trajectory_points[0].velocities)
+            if dimensions_dict['accelerations']:
+                first_trajectory_point.accelerations = deepcopy(trajectory_points[0].accelerations)
             first_trajectory_point.velocities = deepcopy(trajectory_points[0].velocities)
             first_trajectory_point.accelerations = deepcopy(trajectory_points[0].accelerations)
             first_trajectory_point.time_from_start = rospy.Duration(0)
@@ -243,8 +302,19 @@ class JointTrajectoryActionServer(object):
             num_points = len(trajectory_points)
 
         if not self.continuous:
-            trajectory_points[-1].velocities = [0.0] * len(joint_names)
-            trajectory_points[-1].accelerations = [0.0] * len(joint_names)
+            if dimensions_dict['velocities']:
+                trajectory_points[-1].velocities = [0.0] * len(joint_names)
+            if dimensions_dict['accelerations']:
+                trajectory_points[-1].accelerations = [0.0] * len(joint_names)
+
+        # Compute Full Bezier Curve Coefficients for all 7 joints
+        pnt_times = [pnt.time_from_start.to_sec() for pnt in trajectory_points]
+        try:
+            b_matrix = self._compute_bezier_coeff(joint_names, trajectory_points, dimensions_dict)
+        except Exception as ex:
+            rospy.logerr("Failed to compute a Bezier trajectory: {}".format(repr(o)))
+            self._server.set_aborted()
+            return
 
         # Wait for the specified execution time, if not provided use now
         start_time = goal.trajectory.header.stamp.to_sec()
@@ -259,24 +329,32 @@ class JointTrajectoryActionServer(object):
         # of the control rate past the end to ensure we get to the end.
         # Keep track of current indices for spline segment generation
         now_from_start = rospy.get_time() - start_time
-        point_id = 0
-        while point_id < len(trajectory_points):
-            end_time = trajectory_points[point_id].time_from_start.to_sec()
-            point = trajectory_points[point_id]
-            while (now_from_start < end_time and not rospy.is_shutdown() and self.robot_is_enabled()):
-                #Acquire Mutex
-                now = rospy.get_time()
-                now_from_start = now - start_time
+        end_time = trajectory_points[-1].time_from_start.to_sec()
+        while (now_from_start < end_time and not rospy.is_shutdown() and
+               self.robot_is_enabled()):
+            #Acquire Mutex
+            now = rospy.get_time()
+            now_from_start = now - start_time
+            idx = bisect.bisect(pnt_times, now_from_start)
+            #Calculate percentage of time passed in this interval
+            if idx >= num_points:
+                cmd_time = now_from_start - pnt_times[-1]
+                t = 1.0
+            elif idx >= 0:
+                cmd_time = (now_from_start - pnt_times[idx-1])
+                t = cmd_time / (pnt_times[idx] - pnt_times[idx-1])
+            else:
+                cmd_time = 0
+                t = 0
 
-                # Command Joint Position, Velocity, Acceleration
-                command_executed = self._command_joints(joint_names, point)
-                self.states.update()
-                self._update_feedback(deepcopy(point), joint_names, now_from_start)
-                # Release the Mutex
-                if not command_executed:
-                    return
-                control_rate.sleep()
-            point_id += 1
+            point = self._get_bezier_point(b_matrix, idx, t, cmd_time, dimensions_dict)
+
+            # Command Joint Position, Velocity, Acceleration
+            command_executed = self._command_joints(joint_names, point)
+            self._update_feedback(deepcopy(point), joint_names, now_from_start)
+            if not command_executed:
+                return
+            control_rate.sleep()
 
         # Keep trying to meet goal until goal_time constraint expired
         last = trajectory_points[-1]
