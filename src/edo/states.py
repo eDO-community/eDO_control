@@ -9,6 +9,7 @@ from edo_core_msgs.msg import JointControl
 from edo_core_msgs.msg import MovementCommand
 from edo_core_msgs.msg import JointCalibration
 from edo_core_msgs.msg import MovementFeedback
+from edo.messages import errors
 
 from getkey import getkey, keys
 
@@ -68,11 +69,6 @@ class EdoStates(object):
 
         self.msg_jca = JointControlArray()
         self.msg_mc = MovementCommand()
-        self.msg_mc.move_command = 74
-        self.msg_mc.move_type = 74
-        self.msg_mc.ovr = 100
-        self.msg_mc.target.data_type = 74
-        self.msg_mc.target.joints_mask = 127
 
         # Joint Command topics
         self.jog_command_pub = None
@@ -123,10 +119,9 @@ class EdoStates(object):
         elif msg.type == 2:
             self._sent_next_movement_command_bool = True
         elif msg.type == -1:
-            rospy.logerr("Feedback Error, msg.data: %d, " % msg.data)
+            rospy.logerr("Feedback Error: {}".format(errors[msg.data] if msg.data in errors else msg.data))
         else:
-            rospy.logerr("Feedback from a robot is not specified!!!: msg.type: $d, msg.data: %d" % msg.type, msg.data)
-        # rospy.loginfo(msg)
+            rospy.logerr("Feedback from robot is unknown: msg.type: %d, msg.data: %d" % msg.type, msg.data)
 
     def get_current_code_string(self):
         if self.edo_current_state == self.CS_DISCONNECTED:
@@ -211,12 +206,31 @@ class EdoStates(object):
         self.disengage_brakes()
 
     def create_jog_joints_command_message(self, values):
+        self.msg_mc.move_command = 74
+        self.msg_mc.move_type = 74
+        self.msg_mc.ovr = 100
+        self.msg_mc.target.data_type = 74
+        self.msg_mc.target.joints_mask = 127
         self.msg_mc.target.joints_data = [0.0] * 10
         for i, value in enumerate(values):
             self.msg_mc.target.joints_data[i] = value
         return self.msg_mc
 
+    def create_move_commande_messages(self, joint_names, point):
+        self.msg_mc.move_command = 77
+        self.msg_mc.move_type = 74
+        self.msg_mc.ovr = 50
+        self.msg_mc.target.data_type = 74
+        self.msg_mc.target.joints_mask = (1 << len(joint_names)) - 1
+        self.msg_mc.target.joints_data = [JointControl(point.positions[i]/0.01745, point.velocities[i]/0.01745, 0, 0, 0) for i in range(self.msg_jca.size)]
+        return self.msg_mc
+
     def create_jog_joint_command_message(self, sign):
+        self.msg_mc.move_command = 74
+        self.msg_mc.move_type = 74
+        self.msg_mc.ovr = 100
+        self.msg_mc.target.data_type = 74
+        self.msg_mc.target.joints_mask = 127
         self.msg_mc.target.joints_data = [0.0] * 10
         self.msg_mc.target.joints_data[self._current_joint] = sign * self._edo_jog_speed
         return self.msg_mc
@@ -233,7 +247,7 @@ class EdoStates(object):
             rospy.logwarn("Robot was already calibrated, going for a new calibration...")
         else:
             while not (self.edo_current_state == self.CS_NOT_CALIBRATED and self.edo_opcode == self.OP_JOINT_UNCALIBRATED) and not rospy.is_shutdown():
-                rospy.loginfo("Waiting machine state OP_JOINT_UNCALIBRATED (currently {}) and opcode OP_CS_NOT_CALIBRATED (currently {})...".format(
+                rospy.loginfo("Waiting machine state CS_NOT_CALIBRATED (currently {}) and opcode OP_CS_NOT_CALIBRATED (currently {})...".format(
                     self.get_current_code_string(), self.get_current_opcode_messages()))
                 self.update()
                 rospy.sleep(1)
@@ -284,10 +298,10 @@ class EdoStates(object):
 
                 if self._current_joint >= self.NUMBER_OF_JOINTS-1:
                     self._current_joint = 0
-                    rospy.loginfo("Calibration completed, exiting jog loop")
-                    return True
+                    rospy.sleep(0.5)
+                    return self.edo_current_state == self.CS_CALIBRATED and self.edo_opcode == 0
                 else:
-                    rospy.loginfo("Calibrating joint %d", self._current_joint + 1)
+                    rospy.loginfo("Calibrating joint %d...", self._current_joint + 1)
             elif key == keys.ESC:
                 rospy.loginfo("Calibration NOT finished for all joints, exiting jog loop")
                 break
