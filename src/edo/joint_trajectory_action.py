@@ -93,7 +93,7 @@ class JointTrajectoryActionServer(object):
         self._velocities = {}
 
         # Actual robot control
-        self.states = EdoStates(-1, -1)
+        self.states = EdoStates()
         rospy.Subscriber("joint_states", JointState, self._js_callback)
 
         # Action Feedback/Result

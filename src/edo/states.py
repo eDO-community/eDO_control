@@ -45,7 +45,7 @@ class EdoStates(object):
     OP_EMERGENCY_STOP = 128     # E-stop active [as documented in code; surprisingly actual E-STOP is not 128 but OP_BRAKE_ACTIVE]
     OP_FENCE = 256              # Fence active
 
-    def __init__(self, current_state, opcode):
+    def __init__(self, current_state=-1, opcode=-1, enable_algorithm_node=False):
         self.edo_current_state = current_state
         self._edo_opcode_previous = opcode
         self._edo_current_state_previous = current_state
@@ -82,22 +82,23 @@ class EdoStates(object):
         self._joint_calibration_command_pub = rospy.Publisher('/bridge_jnt_calib', JointCalibration, queue_size=10, latch=True)
 
         rospy.Subscriber('/machine_movement_ack', MovementFeedback, self.move_ack_callback)  
-        self.switch_algo_service(False)      
+        self.switch_algo_service(enable_algorithm_node)      
 
     def switch_algo_service(self, new_state):
-        rospy.loginfo("Waiting for the service that disables the robot's itnernal algorithm manager...")
+        state_string = "enable" if new_state else "disable"
+        rospy.loginfo("Waiting for the service that {}s the robot's internal algorithm manager...".format(state_string))
         rospy.wait_for_service('/algo_control_switch_srv')
         try:
             algo_control_switch_srv = rospy.ServiceProxy('/algo_control_switch_srv', ControlSwitch)
-            answer = algo_control_switch_srv(ControlSwitchRequest(mode=1))
+            answer = algo_control_switch_srv(ControlSwitchRequest(mode=0 if new_state else 1))
         except rospy.ServiceException, e:
-            rospy.logerr("Cannot disable internal robot's algorithm manager")
+            rospy.logerr("Cannot {} internal robot's algorithm manager".format(state_string))
         else:
             done = answer.result == 0
             if done:
-                rospy.logwarn("Robot's algorithm manager has been disabled, tablet app will no longer work")
+                rospy.logwarn("Robot's algorithm manager has been {}d".format(state_string))
             else:
-                rospy.logwarn("Cannot disable internal robot's algorithm manager, perhaps it is already off")
+                rospy.logwarn("Cannot {} internal robot's algorithm manager, perhaps it is already {}d".format(state_string, state_string))
 
 
     def callback(self, msg):
@@ -253,6 +254,8 @@ class EdoStates(object):
     def calibration(self):
         if self.edo_current_state == self.CS_CALIBRATED and self.edo_opcode == 0:
             rospy.logwarn("Robot was already calibrated, going for a new calibration...")
+            rospy.logerr("Recalibrating a calibrated robot requires reboot, see https://github.com/ymollard/eDO_control/issues/2")
+            return False
         else:
             while not (self.edo_current_state == self.CS_NOT_CALIBRATED and self.edo_opcode == self.OP_JOINT_UNCALIBRATED) and not rospy.is_shutdown():
                 rospy.loginfo("Waiting machine state CS_NOT_CALIBRATED (currently {}) and opcode OP_CS_NOT_CALIBRATED (currently {})...".format(

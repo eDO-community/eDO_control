@@ -6,7 +6,7 @@ from edo.states import EdoStates
 
 if __name__ == '__main__':
     rospy.init_node('edo_calibrate', anonymous=True)
-    states = EdoStates(-1, -1) 
+    states = EdoStates(enable_algorithm_node=True) 
     calibrated = False
     rospy.logwarn("Starting robot calibration procedure...")
     try:
