@@ -39,15 +39,16 @@ Press `ctrl=X`, `y` and then `Enter` to valide the filename and overwrite the fi
 Type `sudo reboot` to reboot the robot and wait for it to be up again.
 
 ### 3. Local workstation ROS config
-setup your ROS environment variables on your local workstation:
+A setup script `start.bash` configures the environment variables for you every time you want to work with your EDo.
+It adds a yellow-coloured prefix to your prompt with the name of the right ROS master URI when enabled.
 ```
-export ROS_MASTER_URI=http://10.42.0.49:11311
-export ROS_IP=10.42.0.1       # Set your workstation's IP instead!
+roscd edo_control
+./start.bash
 ```
 
 Check that everything is fine: If this command returns the message below, you're done for the ROS network configuration!
 ```
-$ rostopic echo /machine_state -n1
+[http://10.42.0.49:11311] me@workstation :~$ rostopic echo /machine_state -n1
 current_state: 0
 opcode: 0
 ```
@@ -59,7 +60,7 @@ opcode: 0
 You should first see a `JOINT_UNCALIBRATED` warning message and then the explanations for the calibration procedure.
 Follow the instructions every time you see `Calibrating joint X`, press left and right arrow keys to align the joint center marker and press Enter to switch to the next joint.
 
-Go on wth the entire calibration before continuing.
+Go on with the entire calibration before continuing.
 
 ### 2. Bring up the action server and the joint state publisher
 ```
