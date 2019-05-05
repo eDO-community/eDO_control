@@ -1,7 +1,7 @@
 <package format="2">
 
   <name>edo_control</name>
-  <version>0.1.0</version>
+  <version>0.1.1</version>
   <description>
      Standard ROS interface for position control of eDO's joints 
   </description>
