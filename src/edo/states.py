@@ -254,8 +254,7 @@ class EdoStates(object):
     def calibration(self):
         if self.edo_current_state == self.CS_CALIBRATED and self.edo_opcode == 0:
             rospy.logwarn("Robot was already calibrated, going for a new calibration...")
-            rospy.logerr("Recalibrating a calibrated robot requires reboot, see https://github.com/ymollard/eDO_control/issues/2")
-            return False
+            rospy.logerr("Recalibrating a calibrated robot may requires reboot if it doesn't jog, see https://github.com/ymollard/eDO_control/issues/2")
         else:
             while not (self.edo_current_state == self.CS_NOT_CALIBRATED and self.edo_opcode == self.OP_JOINT_UNCALIBRATED) and not rospy.is_shutdown():
                 rospy.loginfo("Waiting machine state CS_NOT_CALIBRATED (currently {}) and opcode OP_CS_NOT_CALIBRATED (currently {})...".format(
@@ -309,7 +308,7 @@ class EdoStates(object):
 
                 if self._current_joint >= self.NUMBER_OF_JOINTS-1:
                     self._current_joint = 0
-                    rospy.sleep(0.5)
+                    rospy.sleep(1)
                     return self.edo_current_state == self.CS_CALIBRATED and self.edo_opcode == 0
                 else:
                     rospy.loginfo("Calibrating joint %d...", self._current_joint + 1)
