@@ -1,6 +1,7 @@
 #! /usr/bin/env python
 
 import rospy
+from std_msgs.msg import Bool
 from edo_core_msgs.msg import MachineState
 from edo_core_msgs.msg import JointInit
 from edo_core_msgs.msg import JointReset
@@ -9,6 +10,7 @@ from edo_core_msgs.msg import JointControl
 from edo_core_msgs.msg import MovementCommand
 from edo_core_msgs.msg import JointCalibration
 from edo_core_msgs.msg import MovementFeedback
+from edo_core_msgs.msg import JointStateArray
 from edo_core_msgs.srv import ControlSwitch, ControlSwitchRequest
 from edo.messages import errors
 
@@ -51,10 +53,12 @@ class EdoStates(object):
         self._edo_current_state_previous = current_state
         self.edo_opcode = opcode
         self._edo_jog_speed = 0.5
+        self.griper_position = 60
         self.send_first_step_bool = False  # select 6-axis configuration
         self.send_second_step_bool = False  # disconnect the brakes
         self.send_third_step_bool = False  # calibration process will start
         self._current_joint = 0
+        self.current_joint_states = None
         self._sent_next_movement_command_bool = False
 
         self.reselect_joints_bool = False
@@ -71,6 +75,8 @@ class EdoStates(object):
         self.joint_control_pub = None
 
         rospy.Subscriber("/machine_state", MachineState, self.callback)
+        rospy.Subscriber("usb_jnt_state", JointStateArray, self.js_callback)
+        rospy.Subscriber("open_gripper", Bool, self.callback_gripper)
 
         self._joint_init_command_pub = rospy.Publisher('/bridge_init', JointInit, queue_size=10, latch=True)
         self._joint_reset_command_pub = rospy.Publisher('/bridge_jnt_reset', JointReset, queue_size=10, latch=True)
@@ -83,6 +89,23 @@ class EdoStates(object):
 
         rospy.Subscriber('/machine_movement_ack', MovementFeedback, self.move_ack_callback)  
         self.switch_algo_service(enable_algorithm_node)      
+
+    def js_callback(self, msg):
+        self.current_joint_states = msg
+
+    def callback_gripper(self, msg):
+        open = msg.data
+        self.change_gripper_state(open)
+
+    def change_gripper_state(self, open):
+        if open:
+            self.gripper_position = 60
+        else:
+            self.gripper_position = 0
+        self.msg_jca.joints = [JointControl(self.current_joint_states.joints[i].position,
+                                            self.current_joint_states.joints[i].velocity,
+                                            self.current_joint_states.joints[i].current, 0, 0) for i in range(6)] + [JointControl(self.gripper_position, 0, 0, 0, 0)]
+        self.joint_control_pub.publish(self.msg_jca)
 
     def switch_algo_service(self, new_state):
         state_string = "enable" if new_state else "disable"
@@ -248,7 +271,7 @@ class EdoStates(object):
         self.msg_jca.size = len(joint_names) + 1
         # Convert back command from radians to degrees
         # TODO: How can we exploit acceleration to provide ff_velocity and maybe current instead of 0, 0, 0?
-        self.msg_jca.joints = [JointControl(point.positions[i]/0.01745, point.velocities[i]/0.01745, 0, 0, 0) for i in range(6)] + [JointControl(0, 0, 0, 0, 0)]
+        self.msg_jca.joints = [JointControl(point.positions[i]/0.01745, point.velocities[i]/0.01745, 0, 0, 0) for i in range(6)] + [JointControl(self.gripper_position, 0, 0, 0, 0)]
         return self.msg_jca
 
     def calibration(self):

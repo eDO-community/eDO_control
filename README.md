@@ -1,6 +1,6 @@
 # eDO Control package
 
-This package take control over eDO robots.
+This package take control over eDO robots and their electric gripper.
 
 It provides a simple ROS interface in order to execute trajectories with position PID control through the `joint_trajectory_action_server` and publishes the current `/joint_states`.
 
@@ -76,4 +76,10 @@ Optionally, this interactive script offers more features for calibration, manual
 
 ```
 rosrun edo_control setup_edo.py
+```
+### 3. Open and close the gripper
+Only the 2-finger electric gripper is supported in this package.
+You can publish `true` for opening the gripper (60mm range) and `false` for closing the gripper (0mm range) on the following topic:
+```
+rostopic pub /open_gripper std_msgs/Bool "data: true"
 ```
