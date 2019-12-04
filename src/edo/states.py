@@ -53,7 +53,7 @@ class EdoStates(object):
         self._edo_current_state_previous = current_state
         self.edo_opcode = opcode
         self._edo_jog_speed = 0.5
-        self.griper_position = 60
+        self.gripper_position = 60
         self.send_first_step_bool = False  # select 6-axis configuration
         self.send_second_step_bool = False  # disconnect the brakes
         self.send_third_step_bool = False  # calibration process will start
