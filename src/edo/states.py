@@ -102,9 +102,10 @@ class EdoStates(object):
             self.gripper_position = 60
         else:
             self.gripper_position = 0
+		# add one zero at the end cause the message JointControl changed in version 3.0 of edo
         self.msg_jca.joints = [JointControl(self.current_joint_states.joints[i].position,
                                             self.current_joint_states.joints[i].velocity,
-                                            self.current_joint_states.joints[i].current, 0, 0) for i in range(6)] + [JointControl(self.gripper_position, 0, 0, 0, 0)]
+                                            self.current_joint_states.joints[i].current, 0, 0, 0) for i in range(6)] + [JointControl(self.gripper_position, 0, 0, 0, 0, 0)]
         self.joint_control_pub.publish(self.msg_jca)
 
     def switch_algo_service(self, new_state):
@@ -271,7 +272,8 @@ class EdoStates(object):
         self.msg_jca.size = len(joint_names) + 1
         # Convert back command from radians to degrees
         # TODO: How can we exploit acceleration to provide ff_velocity and maybe current instead of 0, 0, 0?
-        self.msg_jca.joints = [JointControl(point.positions[i]/0.01745, point.velocities[i]/0.01745, 0, 0, 0) for i in range(6)] + [JointControl(self.gripper_position, 0, 0, 0, 0)]
+        # add one zero at the end cause the message JointControl changed in version 3.0 of edo
+        self.msg_jca.joints = [JointControl(point.positions[i]/0.01745, point.velocities[i]/0.01745, 0, 0, 0, 0) for i in range(6)] + [JointControl(self.gripper_position, 0, 0, 0, 0, 0)]
         return self.msg_jca
 
     def calibration(self):
