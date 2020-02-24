@@ -1,8 +1,11 @@
 # eDO Control package
 
-This package take control over eDO robots and their electric gripper.
+This package take control over eDO robots v2 and their electric gripper.
 
 It provides a simple ROS interface in order to execute trajectories with position PID control through the `joint_trajectory_action_server` and publishes the current `/joint_states`.
+
+## WARNING READ THIS
+The current respository only works with eDO v2. If you have an edo version 3 (which is likely the case if you bought your robot after October 2019), please use [this package](https://github.com/Bracewind/eDO_control_v3) instead.
 
 ## Advised ROS network configuration
 Although other configurations are possible, this package intends to run on a deported workstation connected through Ethernet to a 6-axis e.Do on which an electric gripper is mounted.
